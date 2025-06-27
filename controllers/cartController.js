@@ -1,6 +1,9 @@
 const { CartHeader, CartDetails } = require('../models');
 const { getProductos } = require('../services/productService');
 const { getCoupon } = require('../services/couponService');
+const CartDto = require('../models/dto/cartDto');
+const CartDetailsDto = require('../models/dto/cartDetailsDto');
+const CartHeaderDto = require('../models/dto/cartHeaderDto');
 
 module.exports = {
   async applyCoupon(req, res) {
@@ -46,16 +49,21 @@ module.exports = {
 
       const cartDetails = await CartDetails.findAll({ where: { CartHeaderId: cartHeader.CartHeaderId } });
 
-      const products = await getProductos(token);
+      const productos = await getProductos(token);
 
       let cartTotal = 0;
-      const cartDetailsWithProduct = cartDetails.map(detail => {
-        const product = products.find(p => p.productId === detail.ProductId);
-        cartTotal += detail.Count * (product?.price || 0);
-        return {
-          ...detail.toJSON(),
-          ProductDto: product
-        };
+      const cartDetailsDtos = cartDetails.map(detail => {
+        const productDto = productos.find(p => p.productId === detail.ProductId);
+        const totalItem = detail.Count * (productDto?.price || 0);
+        cartTotal += totalItem;
+
+        return new CartDetailsDto({
+          cartDetailsId: detail.CartDetailsId,
+          cartHeaderId: detail.CartHeaderId,
+          productId: detail.ProductId,
+          count: detail.Count,
+          productDto: productDto
+        });
       });
 
       let discount = 0;
@@ -67,17 +75,23 @@ module.exports = {
         }
       }
 
-      res.json({
-        isSuccess: true,
-        result: {
-          CartHeader: {
-            ...cartHeader.toJSON(),
-            CartTotal: cartTotal,
-            Discount: discount
-          },
-          CartDetailsDtos: cartDetailsWithProduct
-        }
+      const cartHeaderDto = new CartHeaderDto({
+        cartHeaderId: cartHeader.CartHeaderId,
+        userId: cartHeader.UserId,
+        couponCode: cartHeader.CouponCode,
+        discount,
+        cartTotal,
+        name: cartHeader.Name,
+        phone: cartHeader.Phone,
+        email: cartHeader.Email
       });
+
+      const result = new CartDto({
+        cartHeader: cartHeaderDto,
+        cartDetailsDtos: cartDetailsDtos
+      });
+
+      res.json({ isSuccess: true, result });
     } catch (err) {
       res.json({ isSuccess: false, message: err.message });
     }
